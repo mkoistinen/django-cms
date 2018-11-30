@@ -1,13 +1,43 @@
 from __future__ import unicode_literals
 
+import re
+
 from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator, URLValidator
 from django.utils.encoding import force_text
 from django.utils.safestring import mark_safe
 from django.utils.translation import ugettext
 
+try:
+    from urllib.parse import urlparse
+except ImportError:
+    # Python < 3
+    from urlparse import urlparse
+
 from cms.utils.page import get_all_pages_from_path
 from cms.utils.urlutils import admin_reverse, relative_url_regex
+
+
+class ExtraURLValidator(URLValidator):
+    """
+    Same as URLValidator but supports more schemes!
+    """
+    schemes = URLValidator.schemes + [
+        'sftp', 'webdav', 'webdavs', 'afp', 'smb', 'git', 'svn', 'hg',
+        'mailto', 'tel'
+    ]
+
+    tel_re = r'^[0-9\+\#\*\-\.\(\)]+$'
+
+    def __call__(self, value):
+        try:
+            super(ExtraURLValidator, self).__call__(value)
+        except ValidationError:
+            parsed = urlparse(value)
+            if parsed.scheme == "tel" and re.match(self.tel_re, parsed.netloc):
+                pass
+            else:
+                raise
 
 
 def validate_relative_url(value):
@@ -20,7 +50,7 @@ def validate_url(value):
         validate_relative_url(value)
     except ValidationError:
         # Fallback to absolute urls
-        URLValidator()(value)
+        ExtraURLValidator()(value)
 
 
 def validate_url_uniqueness(site, path, language, exclude_page=None):
